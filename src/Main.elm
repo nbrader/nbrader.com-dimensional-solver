@@ -22,41 +22,45 @@ type Expr a
 type alias NumersDenoms = (List BaseUnits, List BaseUnits)
 
 allDimExprs : List DimExpr -> List DimExpr
-allDimExprs args =
+allDimExprs input =
     let
+        newArgs = List.concatMap permutationsOfDimExprs (subsets input)
+
         go : List DimExpr -> List DimExpr
-        go list =
-            case list of
-                [] ->
-                    []
+        go x = case x of 
+            [] ->
+                []
 
-                [ arg ] ->
-                    [ arg ]
+            [ arg ] ->
+                [ arg ]
 
-                _ ->
-                    let
-                        n =
-                            List.length list
-                    in
-                    List.concatMap
-                        (\i ->
-                            let
-                                lResult = headTail (List.take i list)
-                                rResult = headTail (List.drop i list)
-                            in
-                            case (lResult, rResult) of
-                                (Just ((lExpr, lUnits), lUnitsTail), Just ((rExpr, rUnits), rUnitsTail)) ->
-                                    [ (Add lExpr rExpr, Add lUnits rUnits)
-                                    , (Sub lExpr rExpr, Sub lUnits rUnits)
-                                    , (Mult lExpr rExpr, Mult lUnits rUnits)
-                                    , (Div lExpr rExpr, Div lUnits rUnits)
-                                    ]
-                                _ ->
-                                    []  -- Handle the case where either lResult or rResult is Nothing
-                        )
-                        (List.range 1 (n - 1))
+            args ->
+                let
+                    n = List.length args
+                in
+                List.concatMap
+                    (\i ->
+                        let
+                            leftArgs = go (List.take i args)
+                            rightArgs = go (List.drop i args)
+                        in
+                        List.concatMap
+                            (\(l, lUnits) ->
+                                List.concatMap
+                                    (\(r, rUnits) ->
+                                        [ (Add l r, Add lUnits rUnits)
+                                        , (Sub l r, Sub lUnits rUnits)
+                                        , (Mult l r, Mult lUnits rUnits)
+                                        , (Div l r, Div lUnits rUnits)
+                                        ]
+                                    )
+                                    rightArgs
+                            )
+                            leftArgs
+                    )
+                    (List.range 1 (n - 1))
     in
-    List.concatMap go (List.concatMap permutationsOfDimExprs (subsets args))
+    List.concatMap go newArgs
 
 -- Bidirectional mapping between DimExpr and Int
 dimExprToInt : List DimExpr -> DimExpr -> Int
