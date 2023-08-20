@@ -285,7 +285,7 @@ type Msg
 init : () -> (Model, Cmd Msg)
 init _ =
     (
-        { inputData = ""
+        { inputData = "2.0, TimeHours\n1.0, Dimensionless\n1.0, Dimensionless\n1.0, TimeHours\n1.0, TimeHours"
         , performedSteps = ""
         , output = ""
         },
