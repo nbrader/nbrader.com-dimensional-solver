@@ -132,15 +132,14 @@ printAllDimExprs args = printDimExprs . removeSndFailures . normaliseDimExprs $ 
 exampleProblemArgs = [
         (Const 1, Const Dimensionless),
         (Const 1, Const Dimensionless),
-        (Const 1, Const Dimensionless),
-        (Const 1, Const Dimensionless),
-        (Const 1, Const Dimensionless)
+        (Const 1, Const TimeHours),
+        (Const 1, Const TimeHours)
     ]
 
 printAllDimExprsFromExampleProblemArgs = printAllDimExprs exampleProblemArgs
 
 exampleProblem = printMatchingDimExprs target exampleProblemArgs
-  where target = 1.5
+  where target = 3
 
 exampleProblemApprox = printNearDimExprs target tol exampleProblemArgs
   where target = 12.5

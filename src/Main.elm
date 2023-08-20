@@ -270,22 +270,29 @@ printNearDimExprs : Float -> Float -> List DimExpr -> List String
 printNearDimExprs target tol args =
     allDimExprs args
         |> List.filter (\(expr, _) -> case eval expr of
-                                       Just val -> abs (val - target) < tol
+                                       Just val -> abs (val - target) <= tol
                                        Nothing -> False)
         |> normaliseDimExprs
         |> removeSndFailures
         |> printDimExprs
 
+type Mode
+    = Exact
+    | Approximate
+
 type alias Model =
     { inputData : String
     , targetValue : String
-    , performedSteps : String
+    , toleranceValue : String
+    , mode : Mode
     , output : String
     }
 
 type Msg
     = InputChanged String
     | TargetChanged String
+    | ToleranceChanged String
+    | ToggleMode
     | SubmitInput
 
 init : () -> (Model, Cmd Msg)
@@ -293,7 +300,8 @@ init _ =
     (
         { inputData = "1.0, Dimensionless\n1.0, Dimensionless\n1.0, TimeHours\n1.0, TimeHours"
         , targetValue = "2.0"
-        , performedSteps = ""
+        , toleranceValue = "0.1"
+        , mode = Exact
         , output = ""
         },
         Cmd.none
@@ -308,14 +316,53 @@ update msg model =
         TargetChanged newTarget ->
             ({ model | targetValue = newTarget }, Cmd.none)
 
+        ToleranceChanged newTolerance ->
+            ({ model | toleranceValue = newTolerance }, Cmd.none)
+
+        ToggleMode ->
+            let
+                newMode =
+                    case model.mode of
+                        Exact -> Approximate
+                        Approximate -> Exact
+            in
+            ({ model | mode = newMode }, Cmd.none)
+
         SubmitInput ->
             let
                 target = String.toFloat model.targetValue |> Maybe.withDefault 0.0
+                tolerance = String.toFloat model.toleranceValue |> Maybe.withDefault 0.1
                 dimExprs = String.lines model.inputData |> List.map parseDimExpr
-                results = printMatchingDimExprs target dimExprs
+                results = 
+                    case model.mode of
+                        Exact -> printMatchingDimExprs target dimExprs
+                        Approximate -> printNearDimExprs target tolerance dimExprs
                 outputText = String.join "\n" results
             in
             ({ model | output = outputText }, Cmd.none)
+
+view : Model -> Html Msg
+view model =
+    div []
+        [ h2 [] [ Html.text "Target Value" ]
+        , input [ type_ "text", placeholder "Enter target value", value model.targetValue, onInput TargetChanged ] []
+        
+        , h2 [] [ Html.text "Tolerance Value (for Approximate mode)" ]
+        , input [ type_ "text", placeholder "Enter tolerance value", value model.toleranceValue, onInput ToleranceChanged ] []
+
+        , h2 [] [ Html.text "Mode" ]
+        , button [ onClick ToggleMode ] [ Html.text (case model.mode of
+                                                        Exact -> "Exact"
+                                                        Approximate -> "Approximate") ]
+
+        , h2 [] [ Html.text "Input Data" ]
+        , textarea [ onInput InputChanged ] [ Html.text model.inputData ]
+        
+        , button [ onClick SubmitInput ] [ Html.text "Submit Input" ]
+        
+        , h2 [] [ Html.text "Output" ]
+        , textarea [ readonly True ] [ Html.text model.output ]
+        ]
 
 extractFloatForTargetBodge : DimExpr -> Float
 extractFloatForTargetBodge (x,_) = case x of
@@ -343,24 +390,6 @@ parseBaseUnit str =
         "TimeHours" -> Const TimeHours
         "MoneyPounds" -> Const MoneyPounds
         _ -> Const Dimensionless
-
-view : Model -> Html Msg
-view model =
-    div []
-        [ h2 [] [ Html.text "Target Value" ]
-        , input [ type_ "text", placeholder "Enter target value", value model.targetValue, onInput TargetChanged ] []
-        
-        , h2 [] [ Html.text "Input Data" ]
-        , textarea [ onInput InputChanged ] [ Html.text model.inputData ]
-        
-        , button [ onClick SubmitInput ] [ Html.text "Submit Input" ]
-        
-        , h2 [] [ Html.text "Performed Steps" ]
-        , textarea [ readonly True ] [ Html.text model.performedSteps ]
-        
-        , h2 [] [ Html.text "Output" ]
-        , textarea [ readonly True ] [ Html.text model.output ]
-        ]
 
 subscriptions : Model -> Sub Msg
 subscriptions _ =
