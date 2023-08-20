@@ -274,18 +274,21 @@ printNearDimExprs target tol args =
 
 type alias Model =
     { inputData : String
+    , targetValue : String
     , performedSteps : String
     , output : String
     }
 
 type Msg
     = InputChanged String
+    | TargetChanged String
     | SubmitInput
 
 init : () -> (Model, Cmd Msg)
 init _ =
     (
-        { inputData = "2.0, TimeHours\n1.0, Dimensionless\n1.0, Dimensionless\n1.0, TimeHours\n1.0, TimeHours"
+        { inputData = "1.0, Dimensionless\n1.0, Dimensionless\n1.0, TimeHours\n1.0, TimeHours"
+        , targetValue = "2.0"
         , performedSteps = ""
         , output = ""
         },
@@ -298,19 +301,15 @@ update msg model =
         InputChanged newInput ->
             ({ model | inputData = newInput }, Cmd.none)
 
+        TargetChanged newTarget ->
+            ({ model | targetValue = newTarget }, Cmd.none)
+
         SubmitInput ->
             let
-                -- Parsing the input to get DimExpr values
+                target = String.toFloat model.targetValue |> Maybe.withDefault 0.0
                 dimExprs = String.lines model.inputData |> List.map parseDimExpr
-                
-                -- Create the output
-                outputText = case headTail dimExprs of
-                    Nothing -> ""
-                    Just (target, inputs) ->
-                        let
-                            -- Calculate all the DimExpr permutations
-                            results = printMatchingDimExprs (extractFloatForTargetBodge target) inputs
-                        in String.join "\n" results
+                results = printMatchingDimExprs target dimExprs
+                outputText = String.join "\n" results
             in
             ({ model | output = outputText }, Cmd.none)
 
@@ -344,8 +343,12 @@ parseBaseUnit str =
 view : Model -> Html Msg
 view model =
     div []
-        [ h2 [] [ Html.text "Input Data" ]
+        [ h2 [] [ Html.text "Target Value" ]
+        , input [ type_ "text", placeholder "Enter target value", value model.targetValue, onInput TargetChanged ] []
+        
+        , h2 [] [ Html.text "Input Data" ]
         , textarea [ onInput InputChanged ] [ Html.text model.inputData ]
+        
         , button [ onClick SubmitInput ] [ Html.text "Submit Input" ]
         
         , h2 [] [ Html.text "Performed Steps" ]
