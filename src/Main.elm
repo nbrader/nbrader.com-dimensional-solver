@@ -281,7 +281,7 @@ type Mode
     | Approximate
 
 type alias Model =
-    { inputData : String
+    { dimExprs : List DimExpr
     , targetValue : String
     , toleranceValue : String
     , mode : Mode
@@ -289,7 +289,9 @@ type alias Model =
     }
 
 type Msg
-    = InputChanged String
+    = AddInput
+    | RemoveInput Int
+    | UpdateInput Int Float BaseUnits
     | TargetChanged String
     | ToleranceChanged String
     | ToggleMode
@@ -298,7 +300,7 @@ type Msg
 init : () -> (Model, Cmd Msg)
 init _ =
     (
-        { inputData = "1.0, Dimensionless\n1.0, Dimensionless\n1.0, TimeHours\n1.0, TimeHours"
+        { dimExprs = [(Const 0.0, Const Dimensionless)]
         , targetValue = "2.0"
         , toleranceValue = "0.1"
         , mode = Exact
@@ -310,8 +312,18 @@ init _ =
 update : Msg -> Model -> (Model, Cmd Msg)
 update msg model =
     case msg of
-        InputChanged newInput ->
-            ({ model | inputData = newInput }, Cmd.none)
+        AddInput ->
+            ({ model | dimExprs = model.dimExprs ++ [(Const 0.0, Const Dimensionless)] }, Cmd.none)
+
+        RemoveInput index ->
+            ({ model | dimExprs = List.Extra.removeAt index model.dimExprs }, Cmd.none)
+
+        UpdateInput index value unit ->
+            let
+                updater current = (Const value, Const unit)
+                updated = List.Extra.updateAt index updater model.dimExprs
+            in
+            ({ model | dimExprs = updated }, Cmd.none)
 
         TargetChanged newTarget ->
             ({ model | targetValue = newTarget }, Cmd.none)
@@ -332,7 +344,7 @@ update msg model =
             let
                 target = String.toFloat model.targetValue |> Maybe.withDefault 0.0
                 tolerance = String.toFloat model.toleranceValue |> Maybe.withDefault 0.1
-                dimExprs = String.lines model.inputData |> List.map parseDimExpr
+                dimExprs = model.dimExprs
                 results = 
                     case model.mode of
                         Exact -> printMatchingDimExprs target dimExprs
@@ -346,7 +358,7 @@ view model =
     div []
         [ h2 [] [ Html.text "Target Value" ]
         , input [ type_ "text", placeholder "Enter target value", value model.targetValue, onInput TargetChanged ] []
-        
+       
         , h2 [] [ Html.text "Tolerance Value (for Approximate mode)" ]
         , input [ type_ "text", placeholder "Enter tolerance value", value model.toleranceValue, onInput ToleranceChanged ] []
 
@@ -356,13 +368,41 @@ view model =
                                                         Approximate -> "Approximate") ]
 
         , h2 [] [ Html.text "Input Data" ]
-        , textarea [ onInput InputChanged ] [ Html.text model.inputData ]
-        
+        , div []
+            (List.indexedMap inputField model.dimExprs ++ [ button [ onClick AddInput ] [ Html.text "+" ] ])
+
         , button [ onClick SubmitInput ] [ Html.text "Submit Input" ]
         
         , h2 [] [ Html.text "Output" ]
         , textarea [ readonly True ] [ Html.text model.output ]
         ]
+
+inputField : Int -> DimExpr -> Html Msg
+inputField index dimExpr =
+    case dimExpr of
+        (Const value, Const unit) ->
+            div []
+                [ input [ type_ "number", Html.Attributes.value (String.fromFloat value), onInput (\str -> UpdateInput index (String.toFloat str |> Maybe.withDefault 0.0) unit) ] []
+                , Html.select 
+                    [ onInput 
+                        (\str -> 
+                            let 
+                                newUnitMaybe = parseBaseUnit str
+                                newUnit = 
+                                    case newUnitMaybe of
+                                        Just (Const innerUnit) -> innerUnit
+                                        _ -> Dimensionless
+                            in
+                            UpdateInput index value newUnit
+                        )
+                    ] 
+                    [ Html.option [ Html.Attributes.value "Dimensionless" ] [ Html.text "Dimensionless" ]
+                    , Html.option [ Html.Attributes.value "TimeHours" ] [ Html.text "TimeHours" ]
+                    , Html.option [ Html.Attributes.value "MoneyPounds" ] [ Html.text "MoneyPounds" ]
+                    ]
+                ]
+        _ ->
+            div [] [ text "Unsupported expression" ]
 
 extractFloatForTargetBodge : DimExpr -> Float
 extractFloatForTargetBodge (x,_) = case x of
@@ -376,7 +416,11 @@ parseDimExpr line =
     in
     case parts of
         [numExprStr, baseUnitStr] ->
-            (parseNumExpr numExprStr, parseBaseUnit baseUnitStr)
+            let
+                numExpr = parseNumExpr numExprStr
+                baseUnit = Maybe.withDefault (Const Dimensionless) (parseBaseUnit baseUnitStr)
+            in
+            (numExpr, baseUnit)
         _ -> (Const 0.0, Const Dimensionless)  -- Default, error handling needed
 
 parseNumExpr : String -> Expr Float
@@ -384,12 +428,12 @@ parseNumExpr str =
     -- For simplicity, only handle basic floats for now
     Const (String.toFloat str |> Maybe.withDefault 0.0)
 
-parseBaseUnit : String -> Expr BaseUnits
+parseBaseUnit : String -> Maybe (Expr BaseUnits)
 parseBaseUnit str =
     case str of
-        "TimeHours" -> Const TimeHours
-        "MoneyPounds" -> Const MoneyPounds
-        _ -> Const Dimensionless
+        "TimeHours" -> Just (Const TimeHours)
+        "MoneyPounds" -> Just (Const MoneyPounds)
+        _ -> Just (Const Dimensionless)
 
 subscriptions : Model -> Sub Msg
 subscriptions _ =
