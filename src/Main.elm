@@ -8,7 +8,7 @@ import List.Extra exposing (..)
 
 import Helpers exposing (..)
 
-type BaseUnits = Dimensionless | TimeHours | MoneyPounds
+type alias BaseUnits = String
 type alias DimExpr = (Expr Float, Expr BaseUnits)
 type alias Pair a = (a, Int)
 
@@ -71,7 +71,7 @@ dimExprToInt dimExprList dimExpr =
 
 intToDimExpr : List DimExpr -> Int -> DimExpr
 intToDimExpr dimExprList int =
-    List.Extra.getAt int dimExprList |> Maybe.withDefault (Const 0.0, Const Dimensionless)
+    List.Extra.getAt int dimExprList |> Maybe.withDefault (Const 0.0, Const "Dimensionless")
 
 permutationsOfDimExprs : List DimExpr -> List (List DimExpr)
 permutationsOfDimExprs dimExprs =
@@ -147,10 +147,7 @@ showUnits expr =
             "(" ++ showUnits e1 ++ " / " ++ showUnits e2 ++ ")"
 
 showBaseUnits : BaseUnits -> String
-showBaseUnits x = case x of
-    Dimensionless -> "Dimensionless"
-    TimeHours -> "TimeHours"
-    MoneyPounds -> "MoneyPounds"
+showBaseUnits units = units
 
 normaliseUnits : Expr BaseUnits -> Maybe (Expr BaseUnits)
 normaliseUnits expr =
@@ -182,8 +179,8 @@ toNumersDenoms expr =
             let
                 process (numers1, denoms1) (numers2, denoms2) =
                     let
-                        numers = List.filter (\x -> x /= Dimensionless) (numers1 ++ numers2)
-                        denoms = List.filter (\x -> x /= Dimensionless) (denoms1 ++ denoms2)
+                        numers = List.filter (\x -> x /= "Dimensionless") (numers1 ++ numers2)
+                        denoms = List.filter (\x -> x /= "Dimensionless") (denoms1 ++ denoms2)
                         numersNew = List.foldr delete numers denoms
                         denomsNew = List.foldr delete denoms numers
                     in
@@ -200,8 +197,8 @@ toNumersDenoms expr =
             let
                 process (numers1, denoms1) (numers2, denoms2) =
                     let
-                        numers = List.filter (\x -> x /= Dimensionless) (numers1 ++ denoms2)
-                        denoms = List.filter (\x -> x /= Dimensionless) (denoms1 ++ numers2)
+                        numers = List.filter (\x -> x /= "Dimensionless") (numers1 ++ denoms2)
+                        denoms = List.filter (\x -> x /= "Dimensionless") (denoms1 ++ numers2)
                         numersNew = List.foldr delete numers denoms
                         denomsNew = List.foldr delete denoms numers
                     in
@@ -224,14 +221,14 @@ fromNumersDenoms (numers, denoms) =
         multiply list =
             case list of
                 [] ->
-                    Const Dimensionless
+                    Const "Dimensionless"
 
                 [x] ->
                     Const x
 
                 x :: xs ->
                     Mult (Const x) (multiply xs)
-    in if denom == Const Dimensionless then
+    in if denom == Const "Dimensionless" then
            numer
        else
            Div numer denom
@@ -341,28 +338,43 @@ update msg model =
             in
             ({ model | output = outputText }, Cmd.none)
 
+-- Main view function
 view : Model -> Html Msg
 view model =
     div []
-        [ h2 [] [ Html.text "Target Value" ]
-        , input [ type_ "text", placeholder "Enter target value", value model.targetValue, onInput TargetChanged ] []
-        
-        , h2 [] [ Html.text "Tolerance Value (for Approximate mode)" ]
-        , input [ type_ "text", placeholder "Enter tolerance value", value model.toleranceValue, onInput ToleranceChanged ] []
+        [ -- Section for Target Value
+              h2 [] [ Html.text "Target Value" ]
+            , input [ type_ "text", placeholder "Enter target value", value model.targetValue, onInput TargetChanged ] []
 
-        , h2 [] [ Html.text "Mode" ]
-        , button [ onClick ToggleMode ] [ Html.text (case model.mode of
-                                                        Exact -> "Exact"
-                                                        Approximate -> "Approximate") ]
+            -- Section for Tolerance Value
+            , h2 [] [ Html.text "Tolerance Value (for Approximate mode)" ]
+            , input [ type_ "text", placeholder "Enter tolerance value", value model.toleranceValue, onInput ToleranceChanged ] []
 
-        , h2 [] [ Html.text "Input Data" ]
-        , textarea [ onInput InputChanged ] [ Html.text model.inputData ]
-        
-        , button [ onClick SubmitInput ] [ Html.text "Submit Input" ]
-        
-        , h2 [] [ Html.text "Output" ]
-        , textarea [ readonly True ] [ Html.text model.output ]
+            -- Section for Mode Selection
+            , h2 [] [ Html.text "Mode" ]
+            , button [ onClick ToggleMode ] [ Html.text (case model.mode of
+                                                            Exact -> "Exact"
+                                                            Approximate -> "Approximate") ]
+
+            -- Section for Input Data with a special note
+            , h2 [] [ Html.text "Input Data" ]
+            , div []
+                [ p [] [ Html.text "Please note:" ]
+                , ul []
+                    [ li [] [ Html.text "'Dimensionless' (exact spelling) is the only special unit and will vanish under multiplication." ]
+                    , li [] [ Html.text "Unparsed lines are interpreted as '0, Dimensionless'." ]
+                ]
+            , textarea [ onInput InputChanged ] [ Html.text model.inputData ]
+
+            -- Submit button
+            , button [ onClick SubmitInput ] [ Html.text "Submit Input" ]
+
+            -- Section for Output
+            , h2 [] [ Html.text "Output" ]
+            , textarea [ readonly True ] [ Html.text model.output ]
+            ]
         ]
+
 
 extractFloatForTargetBodge : DimExpr -> Float
 extractFloatForTargetBodge (x,_) = case x of
@@ -376,20 +388,16 @@ parseDimExpr line =
     in
     case parts of
         [numExprStr, baseUnitStr] ->
-            (parseNumExpr numExprStr, parseBaseUnit baseUnitStr)
-        _ -> (Const 0.0, Const Dimensionless)  -- Default, error handling needed
+            (parseNumExpr numExprStr, parseBaseUnits baseUnitStr)
+        _ -> (Const 0.0, Const "Dimensionless")  -- Default, error handling needed
 
 parseNumExpr : String -> Expr Float
 parseNumExpr str =
     -- For simplicity, only handle basic floats for now
     Const (String.toFloat str |> Maybe.withDefault 0.0)
 
-parseBaseUnit : String -> Expr BaseUnits
-parseBaseUnit str =
-    case str of
-        "TimeHours" -> Const TimeHours
-        "MoneyPounds" -> Const MoneyPounds
-        _ -> Const Dimensionless
+parseBaseUnits : String -> Expr BaseUnits
+parseBaseUnits str = Const str
 
 subscriptions : Model -> Sub Msg
 subscriptions _ =
